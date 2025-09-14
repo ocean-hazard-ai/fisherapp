@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🌊 Ocean Hazard & Ship Tracking Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    header { background: #0077b6; color: white; text-align: center; padding: 10px; }
+    #map { height: 400px; width: 100%; }
+    section { padding: 15px; }
+    button { margin: 5px; padding: 8px 15px; border: none; background: #0077b6; color: white; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #023e8a; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 5px 0; padding: 5px; border-bottom: 1px solid #ccc; }
+    .bad { color: red; font-weight: bold; }
+    .good { color: green; font-weight: bold; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background: #0077b6; color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌊 Ocean Hazard & Ship Tracking System</h1>
+  </header>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Hazard Reporting -->
+  <section>
+    <h2>⚠️ Report Hazard</h2>
+    <form id="hazardForm">
+      <label>Hazard Type:</label>
+      <select id="hazardType">
+        <option value="Tsunami">🌊 Tsunami</option>
+        <option value="Storm">⛈️ Storm</option>
+        <option value="Oil Spill">🛢️ Oil Spill</option>
+      </select><br><br>
+
+      <label>Location (Lat, Long):</label>
+      <input type="text" id="location" placeholder="11.2, 82.1"><br><br>
+
+      <button type="submit">Submit Hazard</button>
+    </form>
+    <h3>Reported Hazards:</h3>
+    <ul id="hazardList"></ul>
+  </section>
+
+  <!-- Weather Updates -->
+  <section>
+    <h2>☁️ Weather Condition</h2>
+    <p id="weatherStatus">Checking...</p>
+  </section>
+
+  <!-- Ship Status -->
+  <section>
+    <h2>🚢 Ship & Fishermen Updates</h2>
+    <ul id="shipStatus"></ul>
+  </section>
+
+  <!-- Reply Section -->
+  <section>
+    <h2>📩 Fishermen / Ship Replies</h2>
+    <ul id="replyList"></ul>
+  </section>
+
+  <!-- Confirmation Table -->
+  <section>
+    <h2>✅ Reply Confirmation Table</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Ship/Boat</th>
+          <th>Message</th>
+          <th>Status</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="confirmTable"></tbody>
+    </table>
+  </section>
+
+  <!-- Return ETA -->
+  <section>
+    <h2>⏳ Fishermen Return Prediction</h2>
+    <ul id="etaList"></ul>
+  </section>
+
+  <!-- History Log -->
+  <section>
+    <h2>📜 History Log</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Event</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody id="historyLog"></tbody>
+    </table>
+  </section>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // === MAP SETUP ===
+    var map = L.map('map').setView([10.0, 80.0], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // === SHIPS ===
+    var shipIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/67/67902.png",
+      iconSize: [40, 40]
+    });
+
+    let ships = [
+      { name: "Ship1", path: [[10.0, 80.0],[10.5,80.5],[11.0,81.0],[11.5,81.5]], index:0, returnDays: 2 },
+      { name: "Boat1", path: [[9.5,79.5],[10.0,80.0],[10.3,80.4],[10.6,80.8]], index:0, returnDays: 1 }
+    ];
+
+    ships.forEach(s => {
+      s.marker = L.marker(s.path[0], {icon:shipIcon}).addTo(map).bindPopup(s.name);
+    });
+
+    function moveShips() {
+      ships.forEach(s => {
+        s.index = (s.index+1) % s.path.length;
+        let newPos = s.path[s.index];
+        s.marker.setLatLng(newPos);
+        s.marker.bindPopup(`${s.name} at ${newPos}`).openPopup();
+
+        // Border alert
+        if(newPos[0] > 11.5) {
+          triggerAlert(`${s.name} crossed the border at ${newPos}`, true, s.name);
+        } else {
+          addShipUpdate(`${s.name} safe at ${newPos}`, false);
+        }
+      });
+    }
+    setInterval(moveShips, 4000);
+
+    // === WEATHER UPDATES ===
+    const weather = ["Good","Good","Bad","Good","Bad"];
+    function updateWeather() {
+      let condition = weather[Math.floor(Math.random()*weather.length)];
+      let el = document.getElementById("weatherStatus");
+      if(condition === "Bad") {
+        el.innerHTML = "⛈️ Weather Condition: <span class='bad'>Bad</span>";
+        triggerAlert("Bad weather alert sent to all ships & coastal people!", true, "ALL");
+      } else {
+        el.innerHTML = "☀️ Weather Condition: <span class='good'>Good</span>";
+      }
+    }
+    setInterval(updateWeather, 6000);
+    updateWeather();
+
+    // === HAZARD FORM ===
+    const form = document.getElementById("hazardForm");
+    const hazardList = document.getElementById("hazardList");
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const type = document.getElementById("hazardType").value;
+      const loc = document.getElementById("location").value || "Unknown";
+      let msg = `${type} reported at ${loc}`;
+      let li = document.createElement("li");
+      li.textContent = msg;
+      hazardList.appendChild(li);
+      triggerAlert(`🚨 ${msg}`, true, "ALL");
+      logHistory("Hazard Report", msg);
+      form.reset();
+    });
+
+    // === ALERT & REPLY SYSTEM ===
+    const shipStatus = document.getElementById("shipStatus");
+    const replyList = document.getElementById("replyList");
+    const confirmTable = document.getElementById("confirmTable");
+    const etaList = document.getElementById("etaList");
+    const historyLog = document.getElementById("historyLog");
+
+    function addShipUpdate(msg, danger) {
+      let li = document.createElement("li");
+      li.textContent = msg;
+      li.style.color = danger ? "red" : "green";
+      shipStatus.appendChild(li);
+      logHistory("Ship Update", msg);
+    }
+
+    function triggerAlert(msg, danger, shipName) {
+      alert(msg);
+      addShipUpdate(msg, danger);
+
+      // Fisherman reply simulation
+      let replyLi = document.createElement("li");
+      replyLi.innerHTML = `<b>${shipName}</b> received alert. 
+        <button onclick="reply('${shipName}','Received','${msg}')">✅ Ack</button>
+        <button onclick="reply('${shipName}','Problem','${msg}')">⚠️ Report Problem</button>`;
+      replyList.appendChild(replyLi);
+
+      logHistory("Alert Sent", `${msg} → ${shipName}`);
+    }
+
+    function reply(shipName, status, originalMsg) {
+      let li = document.createElement("li");
+      li.textContent = `${shipName} replied: ${status}`;
+      li.style.color = status === "Problem" ? "red" : "green";
+      replyList.appendChild(li);
+
+      // Add to confirmation table
+      let row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${shipName}</td>
+        <td>${originalMsg}</td>
+        <td style="color:${status==='Problem'?'red':'green'}">${status}</td>
+        <td>${new Date().toLocaleTimeString()}</td>
+      `;
+      confirmTable.appendChild(row);
+
+      logHistory("Reply", `${shipName} → ${status}`);
+    }
+
+    // === ETA Return Prediction ===
+    function updateETA() {
+      etaList.innerHTML = "";
+      ships.forEach(s => {
+        let li = document.createElement("li");
+        li.textContent = `${s.name} expected return in ${s.returnDays} days`;
+        etaList.appendChild(li);
+      });
+    }
+    updateETA();
+
+    // === History Logger ===
+    function logHistory(event, details) {
+      let row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${new Date().toLocaleTimeString()}</td>
+        <td>${event}</td>
+        <td>${details}</td>
+      `;
+      historyLog.appendChild(row);
+    }
+  </script>
+</body>
+</html>
